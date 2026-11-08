@@ -63,7 +63,17 @@ interface AppContextType {
   userPreferences: UserPreferences;
   
   // Actions
-  addSourceChannel: (data: { name: string; url: string; frequency: '15m' | '30m' | '1h' | '6h' | '24h' }) => { success: boolean; error?: string };
+  addSourceChannel: (channelData: {
+    name: string;
+    url: string;
+    channelId?: string;
+    handle?: string;
+    thumbnailUrl?: string;
+    subscriberCount?: number;
+    frequency: '15m' | '30m' | '1h' | '6h' | '24h';
+    uploadedVideos?: any[];
+  }) => { success: boolean; error?: string };
+  importVideoFromChannel: (channel: SourceChannel, video: any) => void;
   toggleSourceChannel: (id: string) => void;
   deleteSourceChannel: (id: string) => void;
   connectDestinationChannel: (name: string) => void;
@@ -94,7 +104,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [uiState, setUiState] = useState<UiDataState>('populated');
 
   // Core state
-  const [sourceChannels, setSourceChannels] = useState<SourceChannel[]>(initialSourceChannels);
+  const [sourceChannels, setSourceChannels] = useState<SourceChannel[]>([]);
   const [destinationChannels, setDestinationChannels] = useState<DestinationChannel[]>(initialDestinationChannels);
   const [videos, setVideos] = useState<VideoAsset[]>(initialVideos);
   const [clips, setClips] = useState<Clip[]>(initialClips);
@@ -122,28 +132,42 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   };
 
   // Actions
-  const addSourceChannel = (data: { name: string; url: string; frequency: '15m' | '30m' | '1h' | '6h' | '24h' }) => {
+  const addSourceChannel = (data: {
+    name: string;
+    url: string;
+    channelId?: string;
+    handle?: string;
+    thumbnailUrl?: string;
+    subscriberCount?: number;
+    frequency: '15m' | '30m' | '1h' | '6h' | '24h';
+    uploadedVideos?: any[];
+  }) => {
     // Duplicate detection check
     const existing = sourceChannels.find(
-      (c) => c.channelUrl.toLowerCase() === data.url.toLowerCase() || c.name.toLowerCase() === data.name.toLowerCase()
+      (c) =>
+        (data.channelId && c.channelId === data.channelId) ||
+        c.channelUrl.toLowerCase() === data.url.toLowerCase() ||
+        c.name.toLowerCase() === data.name.toLowerCase()
     );
     if (existing) {
-      return { success: false, error: 'A channel with this URL or name is already being monitored.' };
+      return { success: false, error: `Channel "${existing.name}" is already being monitored.` };
     }
 
     const newChannel: SourceChannel = {
       id: `src-${Date.now()}`,
       name: data.name,
+      handle: data.handle,
       channelUrl: data.url,
-      channelId: `UC_${Math.random().toString(36).substring(2, 12)}`,
-      thumbnailUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
-      subscriberCount: 250000,
+      channelId: data.channelId || `UC_${Math.random().toString(36).substring(2, 12)}`,
+      thumbnailUrl: data.thumbnailUrl || 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=150&auto=format&fit=crop&q=80',
+      subscriberCount: data.subscriberCount || 100000,
       isEnabled: true,
       monitoringFrequency: data.frequency,
       lastCheckedAt: 'Just now',
-      lastUploadedAt: 'Unknown',
-      detectedVideosCount: 0,
+      lastUploadedAt: data.uploadedVideos?.[0]?.publishedAt || 'Recently',
+      detectedVideosCount: data.uploadedVideos?.length || 0,
       createdAt: new Date().toISOString().split('T')[0],
+      uploadedVideos: data.uploadedVideos || [],
     };
 
     setSourceChannels((prev) => [newChannel, ...prev]);
@@ -151,15 +175,48 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       {
         id: `act-${Date.now()}`,
         type: 'detection',
-        title: 'New Monitored Channel Added',
-        description: `Added "${data.name}" with check interval ${data.frequency}.`,
+        title: 'Real-time Channel Connected',
+        description: `Imported channel "${data.name}" (${data.uploadedVideos?.length || 0} recent videos detected).`,
         timestamp: 'Just now',
-        status: 'info',
+        status: 'success',
       },
       ...prev,
     ]);
 
     return { success: true };
+  };
+
+  const importVideoFromChannel = (channel: SourceChannel, video: any) => {
+    const existing = videos.find((v) => v.sourceUrl === video.watchUrl || v.title === video.title);
+    if (existing) return;
+
+    const newVideo: VideoAsset = {
+      id: `vid-${Date.now()}`,
+      title: video.title,
+      sourceChannelId: channel.id,
+      sourceChannelName: channel.name,
+      sourceUrl: video.watchUrl,
+      filename: `${video.videoId || 'yt'}.mp4`,
+      durationSeconds: 720,
+      resolution: '1080x1920 (Auto-Scale)',
+      fileSizeBytes: 314572800,
+      category: 'imported',
+      thumbnailUrl: video.thumbnailUrl,
+      createdAt: 'Just now',
+    };
+
+    setVideos((prev) => [newVideo, ...prev]);
+    setActivityEvents((prev) => [
+      {
+        id: `act-${Date.now()}`,
+        type: 'import',
+        title: 'Video Imported from YouTube Channel',
+        description: `Added "${video.title}" from ${channel.name} into Video Library.`,
+        timestamp: 'Just now',
+        status: 'success',
+      },
+      ...prev,
+    ]);
   };
 
   const toggleSourceChannel = (id: string) => {
@@ -369,7 +426,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   };
 
   const resetAllData = () => {
-    setSourceChannels(initialSourceChannels);
+    setSourceChannels([]);
     setDestinationChannels(initialDestinationChannels);
     setVideos(initialVideos);
     setClips(initialClips);
@@ -404,6 +461,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         integrationHealth,
         userPreferences,
         addSourceChannel,
+        importVideoFromChannel,
         toggleSourceChannel,
         deleteSourceChannel,
         connectDestinationChannel,

@@ -79,9 +79,20 @@ export interface JobSummary {
 // Channels Models
 export type ChannelConnectionStatus = 'connected' | 'disconnected' | 'pending_oauth' | 'error';
 
+export interface YouTubeVideoItem {
+  id: string;
+  videoId: string;
+  title: string;
+  publishedAt: string;
+  thumbnailUrl: string;
+  watchUrl: string;
+  description: string;
+}
+
 export interface SourceChannel {
   id: string;
   name: string;
+  handle?: string;
   channelUrl: string;
   channelId: string;
   thumbnailUrl: string;
@@ -92,6 +103,7 @@ export interface SourceChannel {
   lastUploadedAt: string;
   detectedVideosCount: number;
   createdAt: string;
+  uploadedVideos?: YouTubeVideoItem[];
 }
 
 export interface DestinationChannel {
